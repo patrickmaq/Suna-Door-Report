@@ -43,7 +43,7 @@ function Modal({ onClose, children, width = '520px' }) {
 }
 
 export default function App() {
-  const [isDark, setIsDark] = useState(true)
+  const [isDark, setIsDark] = useState(false)
   const c = isDark ? dark : light
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
