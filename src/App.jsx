@@ -5,18 +5,18 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 const ACT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug']
 
 const light = {
-  bg:'#FAF7EC', surface:'#FFFFFF', surface2:'#F2EFE4',
-  border:'#E4DFCF', border2:'#D5CEB8', text:'#0C0C0C',
-  muted:'#9C9984', muted2:'#C4BEA8', gold:'#B8955A',
-  goldLight:'rgba(184,149,90,0.12)', green:'#3A7D5E',
-  blue:'#4A7FA5', red:'#C0392B', tag:'#EDE9DC'
+  bg:'#f2f1ee', surface:'#FFFFFF', surface2:'#ebe9e4',
+  border:'#dddad4', border2:'#cdc9c0', text:'#413124',
+  muted:'#7a7168', muted2:'#b0a899', gold:'#413124',
+  goldLight:'rgba(65,49,36,0.08)', green:'#2e3d37',
+  blue:'#80bacf', red:'#b83232', tag:'#e4e1db'
 }
 const dark = {
   bg:'#0f0e0d', surface:'#161513', surface2:'#1c1a18',
   border:'#2a2724', border2:'#332f2b', text:'#f0ede8',
   muted:'#8a837a', muted2:'#5a5450', gold:'#c9a96e',
-  goldLight:'rgba(201,169,110,0.12)', green:'#4caf7d',
-  blue:'#5b9bd5', red:'#e05757', tag:'#221f1c'
+  goldLight:'rgba(201,169,110,0.12)', green:'#2e3d37',
+  blue:'#80bacf', red:'#e05757', tag:'#221f1c'
 }
 
 const ACCOUNT_TYPES = ['Major','Chain','Independent','Pharmacy','Franchise','eCommerce','Cafe','Hotel - Hospitality','Spa/Gym','Retail','Tourism - Cafe','Co-op','']
@@ -68,6 +68,9 @@ export default function App() {
   const [showAddRep, setShowAddRep] = useState(false)
   const [editingAccount, setEditingAccount] = useState(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null)
+  const [showLogoUpload, setShowLogoUpload] = useState(false)
+  const [logoUrl, setLogoUrl] = useState(null)
+  const [logoUploading, setLogoUploading] = useState(false)
 
   // Derived reps list
   const reps = [...new Set(accounts.map(a => a.spoc).filter(Boolean))].sort()
@@ -98,6 +101,38 @@ export default function App() {
     const actMap = {}
     ;(act || []).forEach(a => { if (!actMap[a.account_id]) actMap[a.account_id] = {}; actMap[a.account_id][a.month] = a })
     setActivity(actMap)
+    // Load logo
+    const { data: logoFiles } = await supabase.storage.from('logos').list('')
+    if (logoFiles && logoFiles.length > 0) {
+      const { data: { publicUrl } } = supabase.storage.from('logos').getPublicUrl(logoFiles[0].name)
+      setLogoUrl(publicUrl)
+    }
+  }
+
+  async function uploadLogo(file) {
+    setLogoUploading(true)
+    // Remove old logos first
+    const { data: existing } = await supabase.storage.from('logos').list('')
+    if (existing && existing.length > 0) {
+      await supabase.storage.from('logos').remove(existing.map(f => f.name))
+    }
+    const ext = file.name.split('.').pop()
+    const { error } = await supabase.storage.from('logos').upload(`logo.${ext}`, file, { upsert: true })
+    if (!error) {
+      const { data: { publicUrl } } = supabase.storage.from('logos').getPublicUrl(`logo.${ext}`)
+      setLogoUrl(publicUrl + '?t=' + Date.now())
+    }
+    setLogoUploading(false)
+    setShowLogoUpload(false)
+  }
+
+  async function removeLogo() {
+    const { data: existing } = await supabase.storage.from('logos').list('')
+    if (existing && existing.length > 0) {
+      await supabase.storage.from('logos').remove(existing.map(f => f.name))
+    }
+    setLogoUrl(null)
+    setShowLogoUpload(false)
   }
 
   async function signIn() {
@@ -548,13 +583,19 @@ export default function App() {
     <div style={s.app}>
       <header style={s.topbar}>
         <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-          <svg viewBox="0 0 120 42" style={{ height:'26px', width:'auto' }}>
-            <text x="4" y="31" fontFamily="Georgia,serif" fontSize="28" fontStyle="italic" fill={c.text}>s</text>
-            <text x="22" y="31" fontFamily="Georgia,serif" fontSize="28" fontStyle="italic" fill={c.text}>u</text>
-            <path d="M24 12 Q30 6 36 12" stroke={c.gold} strokeWidth="1.8" fill="none" strokeLinecap="round"/>
-            <circle cx="30" cy="8" r="1.6" fill={c.gold}/>
-            <text x="40" y="31" fontFamily="Georgia,serif" fontSize="28" fontStyle="italic" fill={c.text}>na</text>
-          </svg>
+          <div style={{ position:'relative', cursor:'pointer' }} onClick={()=>setShowLogoUpload(true)} title="Click to change logo">
+            {logoUrl ? (
+              <img src={logoUrl} style={{ height:'32px', width:'auto', maxWidth:'140px', objectFit:'contain', display:'block' }} alt="Logo"/>
+            ) : (
+              <svg viewBox="0 0 120 42" style={{ height:'26px', width:'auto' }}>
+                <text x="4" y="31" fontFamily="Georgia,serif" fontSize="28" fontStyle="italic" fill={c.text}>s</text>
+                <text x="22" y="31" fontFamily="Georgia,serif" fontSize="28" fontStyle="italic" fill={c.text}>u</text>
+                <path d="M24 12 Q30 6 36 12" stroke={c.gold} strokeWidth="1.8" fill="none" strokeLinecap="round"/>
+                <circle cx="30" cy="8" r="1.6" fill={c.gold}/>
+                <text x="40" y="31" fontFamily="Georgia,serif" fontSize="28" fontStyle="italic" fill={c.text}>na</text>
+              </svg>
+            )}
+          </div>
           <div style={{ width:'1px', height:'20px', background:c.border2 }}></div>
           <span style={{ fontSize:'12px', color:c.muted }}>Door Report 2026</span>
         </div>
@@ -596,7 +637,7 @@ export default function App() {
             <div style={{ ...s.card, marginBottom:'24px' }}>
               <div style={{ fontSize:'12px', fontWeight:'600', letterSpacing:'0.04em', color:c.muted, textTransform:'uppercase', marginBottom:'16px' }}>Monthly revenue — 2026</div>
               <div style={{ display:'flex', alignItems:'flex-end', gap:'6px', height:'100px' }}>
-                {monthRevs.map((v,i)=>(<div key={i} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:'3px', height:'100%' }}><div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'flex-end', width:'100%' }}><div style={{ fontSize:'9px', color:c.muted, textAlign:'center', marginBottom:'2px' }}>{v>0?fmtS(v):''}</div><div style={{ width:'100%', background:c.gold, borderRadius:'3px 3px 0 0', height:Math.max(v/maxRev*100,v>0?4:2)+'%', minHeight:'2px' }}></div></div><div style={{ fontSize:'8px', color:c.muted2, textTransform:'uppercase' }}>{MONTHS[i]}</div></div>))}
+                {monthRevs.map((v,i)=>(<div key={i} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:'3px', height:'100%' }}><div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'flex-end', width:'100%' }}><div style={{ fontSize:'9px', color:c.muted, textAlign:'center', marginBottom:'2px' }}>{v>0?fmtS(v):''}</div><div style={{ width:'100%', background:c.green, borderRadius:'3px 3px 0 0', height:Math.max(v/maxRev*100,v>0?4:2)+'%', minHeight:'2px' }}></div></div><div style={{ fontSize:'8px', color:c.muted2, textTransform:'uppercase' }}>{MONTHS[i]}</div></div>))}
               </div>
             </div>
             <div style={{ fontSize:'15px', fontWeight:'600', marginBottom:'16px' }}>Top accounts</div>
@@ -693,6 +734,36 @@ export default function App() {
       {showDeleteConfirm && (
         <Modal onClose={()=>setShowDeleteConfirm(null)} width="420px">
           <DeleteConfirm acc={showDeleteConfirm} onClose={()=>setShowDeleteConfirm(null)}/>
+        </Modal>
+      )}
+
+      {/* Logo upload modal */}
+      {showLogoUpload && (
+        <Modal onClose={()=>setShowLogoUpload(false)} width="420px">
+          <div style={s.modalBox}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px' }}>
+              <div style={{ fontSize:'16px', fontWeight:'600' }}>Change Logo</div>
+              <button style={{ background:'none', border:'none', color:c.muted, cursor:'pointer', fontSize:'18px' }} onClick={()=>setShowLogoUpload(false)}>✕</button>
+            </div>
+            {logoUrl && (
+              <div style={{ marginBottom:'16px', padding:'16px', background:c.surface2, borderRadius:'8px', textAlign:'center' }}>
+                <img src={logoUrl} style={{ height:'40px', width:'auto', maxWidth:'200px', objectFit:'contain' }} alt="Current logo"/>
+                <div style={{ fontSize:'11px', color:c.muted, marginTop:'8px' }}>Current logo</div>
+              </div>
+            )}
+            <div style={{ marginBottom:'16px' }}>
+              <label style={s.label}>Upload new logo</label>
+              <input type="file" accept="image/*" style={{ ...s.input, padding:'6px' }} onChange={e => { if(e.target.files[0]) uploadLogo(e.target.files[0]) }}/>
+              <div style={{ fontSize:'11px', color:c.muted, marginTop:'6px' }}>PNG, JPG, SVG — recommended height 40–60px</div>
+            </div>
+            {logoUploading && <div style={{ fontSize:'13px', color:c.muted, marginBottom:'12px' }}>Uploading…</div>}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', paddingTop:'16px', borderTop:`1px solid ${c.border}` }}>
+              {logoUrl ? (
+                <button style={{ ...s.btn('danger'), fontSize:'12px', padding:'6px 12px' }} onClick={removeLogo}>Remove logo</button>
+              ) : <div/>}
+              <button style={s.btn('secondary')} onClick={()=>setShowLogoUpload(false)}>Cancel</button>
+            </div>
+          </div>
         </Modal>
       )}
     </div>
