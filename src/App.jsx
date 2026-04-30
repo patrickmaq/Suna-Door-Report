@@ -4,6 +4,7 @@ import { supabase } from './supabase'
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const ACT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug']
 
+// Light mode: original warm cream palette (unchanged from v1)
 const light = {
   bg:'#f2f1ee', surface:'#FFFFFF', surface2:'#ebe9e4',
   border:'#dddad4', border2:'#cdc9c0', text:'#413124',
@@ -11,16 +12,27 @@ const light = {
   goldLight:'rgba(65,49,36,0.08)', green:'#2e3d37',
   blue:'#80bacf', red:'#b83232', tag:'#e4e1db'
 }
+// Dark mode: true inversion — cream↔dark-brown, white↔near-black, borders flipped.
+// Gold becomes a warm light tan so it's visible on dark surfaces.
 const dark = {
-  bg:'#0f0e0d', surface:'#161513', surface2:'#1c1a18',
-  border:'#2a2724', border2:'#332f2b', text:'#f0ede8',
-  muted:'#8a837a', muted2:'#5a5450', gold:'#c9a96e',
-  goldLight:'rgba(201,169,110,0.12)', green:'#2e3d37',
-  blue:'#80bacf', red:'#e05757', tag:'#221f1c'
+  bg:'#413124', surface:'#2e2318', surface2:'#241a10',
+  border:'#5a4535', border2:'#6e5642', text:'#f2f1ee',
+  muted:'#b0a899', muted2:'#7a7168', gold:'#d4956a',
+  goldLight:'rgba(212,149,106,0.12)', green:'#6dbf9e',
+  blue:'#80bacf', red:'#e05757', tag:'#5a4535'
 }
+
+// FIX 2: Analytics bar color palette — first color changed from #413124
+// (same as font) to a visible amber/gold that works in both themes.
+// The palette is used in analytics charts; index 0 was the culprit for Nathan.
+const CHART_COLORS = ['#c9943a','#80bacf','#4caf80','#a78bfa','#fb923c','#f472b6','#34d399','#fbbf24']
 
 const ACCOUNT_TYPES = ['Major','Chain','Independent','Pharmacy','Franchise','eCommerce','Cafe','Hotel - Hospitality','Spa/Gym','Retail','Tourism - Cafe','Co-op','']
 const PROVINCES = ['AB','BC','MB','NB','NL','NS','NT','NU','ON','PE','QC','SK','YT']
+
+// FIX 4: Suna logo as base64 — replaces the hand-drawn SVG wordmark on login & topbar.
+// The source PNG is near-black on black, so we apply CSS filter to make it visible.
+const SUNA_LOGO_B64 = 'data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCAAoADwDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAAAAEI/8QAHBABAQADAQADAAAAAAAAAAAAAAERIUExAmFx/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AMZAAC8QAAAAFnmimi0Fzi3UsS8/FuLPvqUC6pT5bpQN8L6XFucl90CAAAAAAAA//9k='
 
 function fmt(n){ if(!n) return '—'; return '$'+Math.round(n).toLocaleString('en-CA') }
 function fmtS(n){ if(!n) return ''; if(n>=10000) return '$'+(n/1000).toFixed(0)+'k'; if(n>=1000) return '$'+(n/1000).toFixed(1)+'k'; return '$'+Math.round(n) }
@@ -75,6 +87,12 @@ export default function App() {
   // Derived reps list
   const reps = [...new Set(accounts.map(a => a.spoc).filter(Boolean))].sort()
 
+  // FIX 3: Count of accounts per rep (for sidebar badges)
+  const repCounts = reps.reduce((acc, rep) => {
+    acc[rep] = accounts.filter(a => a.spoc === rep).length
+    return acc
+  }, {})
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
@@ -101,7 +119,7 @@ export default function App() {
     const actMap = {}
     ;(act || []).forEach(a => { if (!actMap[a.account_id]) actMap[a.account_id] = {}; actMap[a.account_id][a.month] = a })
     setActivity(actMap)
-    // Load logo
+    // Load logo from Supabase storage (user-uploaded override)
     const { data: logoFiles } = await supabase.storage.from('logos').list('')
     if (logoFiles && logoFiles.length > 0) {
       const { data: { publicUrl } } = supabase.storage.from('logos').getPublicUrl(logoFiles[0].name)
@@ -111,7 +129,6 @@ export default function App() {
 
   async function uploadLogo(file) {
     setLogoUploading(true)
-    // Remove old logos first
     const { data: existing } = await supabase.storage.from('logos').list('')
     if (existing && existing.length > 0) {
       await supabase.storage.from('logos').remove(existing.map(f => f.name))
@@ -159,7 +176,6 @@ export default function App() {
     setRevenue(prev => ({ ...prev, [accountId]: { ...prev[accountId], [month]: num } }))
   }
 
-  // ── ADD ACCOUNT ───────────────────────────────────────
   async function addAccount(formData) {
     setSaving(true)
     const { data, error } = await supabase.from('accounts').insert([{
@@ -184,7 +200,6 @@ export default function App() {
     return error
   }
 
-  // ── EDIT ACCOUNT ──────────────────────────────────────
   async function saveAccountEdit(formData) {
     setSaving(true)
     const { data, error } = await supabase.from('accounts').update({
@@ -210,7 +225,6 @@ export default function App() {
     return error
   }
 
-  // ── DELETE ACCOUNT ────────────────────────────────────
   async function deleteAccount(id) {
     setSaving(true)
     await supabase.from('activity_log').delete().eq('account_id', id)
@@ -251,7 +265,7 @@ export default function App() {
     topbar: { gridColumn:'1/-1', display:'flex', alignItems:'center', gap:'16px', padding:'0 24px', borderBottom:`1px solid ${c.border}`, background:c.surface },
     sidebar: { borderRight:`1px solid ${c.border}`, background:c.surface, padding:'12px 10px', overflowY:'auto', display:'flex', flexDirection:'column', gap:'2px' },
     main: { overflowY:'auto', padding:'28px 32px', background:c.bg },
-    navItem: (active) => ({ display:'flex', alignItems:'center', gap:'9px', padding:'8px 10px', borderRadius:'7px', cursor:'pointer', color: active ? '#fff' : c.muted, background: active ? c.gold : 'transparent', fontSize:'13px', userSelect:'none' }),
+    navItem: (active) => ({ display:'flex', alignItems:'center', gap:'9px', padding:'8px 10px', borderRadius:'7px', cursor:'pointer', color: active ? '#fff' : c.muted, background: active ? c.gold : 'transparent', fontSize:'13px', userSelect:'none', justifyContent:'space-between' }),
     navLabel: { fontSize:'10px', fontWeight:'600', letterSpacing:'0.1em', color:c.muted2, textTransform:'uppercase', padding:'10px 10px 4px', marginTop:'6px' },
     card: { background:c.surface, border:`1px solid ${c.border}`, borderRadius:'12px', padding:'20px 22px' },
     statCard: (color) => ({ background:c.surface, border:`1px solid ${c.border}`, borderRadius:'12px', padding:'20px 22px', borderTop:`3px solid ${color}` }),
@@ -275,7 +289,7 @@ export default function App() {
     formGrid: { display:'grid', gridTemplateColumns:'1fr 1fr', gap:'14px' },
   }
 
-  // ── ACCOUNT FORM (shared for add + edit) ──────────────
+  // ── ACCOUNT FORM ──────────────────────────────────────
   function AccountForm({ initial = {}, onSave, onCancel, title }) {
     const [form, setForm] = useState({
       company: initial.company || '',
@@ -400,11 +414,9 @@ export default function App() {
     const [error, setError] = useState('')
     const [done, setDone] = useState(false)
 
-    // Adding a rep means adding a placeholder account assigned to them
     async function handleAdd() {
       if (!repName.trim()) { setError('Rep name is required'); return }
       if (reps.includes(repName.trim())) { setError('This rep already exists'); return }
-      // Create a placeholder account so the rep shows up in filters
       const { data, error: err } = await supabase.from('accounts').insert([{
         company: `[${repName.trim()} — placeholder]`,
         spoc: repName.trim(),
@@ -464,18 +476,26 @@ export default function App() {
 
   if (loading) return <div style={{ minHeight:'100vh', background:dark.bg, display:'flex', alignItems:'center', justifyContent:'center', color:dark.muted, fontFamily:'"DM Sans",sans-serif' }}>Loading…</div>
 
+  // ── LOGIN SCREEN ──────────────────────────────────────
   if (!session) {
     return (
       <div style={{ minHeight:'100vh', background:c.bg, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'"DM Sans",sans-serif' }}>
         <div style={{ background:c.surface, border:`1px solid ${c.border}`, borderRadius:'16px', padding:'40px', width:'380px', borderTop:`3px solid ${c.gold}` }}>
+          {/* FIX 4: Use the real Suna logo PNG instead of hand-drawn SVG.
+              The PNG is near-black, so we invert it in light mode to show on white,
+              and leave it inverted in dark mode too since the bg is dark. */}
           <div style={{ marginBottom:'28px', textAlign:'center' }}>
-            <svg viewBox="0 0 120 42" style={{ height:'32px', width:'auto', margin:'0 auto 8px', display:'block' }}>
-              <text x="4" y="31" fontFamily="Georgia,serif" fontSize="28" fontStyle="italic" fill={c.text}>s</text>
-              <text x="22" y="31" fontFamily="Georgia,serif" fontSize="28" fontStyle="italic" fill={c.text}>u</text>
-              <path d="M24 12 Q30 6 36 12" stroke={c.gold} strokeWidth="1.8" fill="none" strokeLinecap="round"/>
-              <circle cx="30" cy="8" r="1.6" fill={c.gold}/>
-              <text x="40" y="31" fontFamily="Georgia,serif" fontSize="28" fontStyle="italic" fill={c.text}>na</text>
-            </svg>
+            <img
+              src={SUNA_LOGO_B64}
+              alt="Suna"
+              style={{
+                height: '36px',
+                width: 'auto',
+                display: 'block',
+                margin: '0 auto 8px',
+                filter: isDark ? 'invert(1) brightness(0.9)' : 'invert(1)',
+              }}
+            />
             <div style={{ fontSize:'13px', color:c.muted }}>Door Report 2026</div>
           </div>
           <div style={{ marginBottom:'14px' }}>
@@ -515,7 +535,6 @@ export default function App() {
           <button style={{ background:c.surface2, border:`1px solid ${c.border}`, color:c.muted, cursor:'pointer', width:'32px', height:'32px', borderRadius:'8px', fontSize:'15px' }} onClick={()=>setSelectedAccount(null)}>✕</button>
         </div>
 
-        {/* Action buttons */}
         <div style={{ display:'flex', gap:'8px', marginBottom:'20px' }}>
           <button style={{ ...s.btn('secondary'), fontSize:'12px', padding:'6px 12px' }} onClick={()=>setEditingAccount(acc)}>✏ Edit details</button>
           <button style={{ ...s.btn('danger'), fontSize:'12px', padding:'6px 12px' }} onClick={()=>setShowDeleteConfirm(acc)}>🗑 Delete</button>
@@ -584,16 +603,21 @@ export default function App() {
       <header style={s.topbar}>
         <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
           <div style={{ position:'relative', cursor:'pointer' }} onClick={()=>setShowLogoUpload(true)} title="Click to change logo">
+            {/* FIX 4 (topbar): Show user-uploaded logo if present, otherwise fall back to
+                the embedded Suna PNG with invert filter to render on the surface bg. */}
             {logoUrl ? (
               <img src={logoUrl} style={{ height:'32px', width:'auto', maxWidth:'140px', objectFit:'contain', display:'block' }} alt="Logo"/>
             ) : (
-              <svg viewBox="0 0 120 42" style={{ height:'26px', width:'auto' }}>
-                <text x="4" y="31" fontFamily="Georgia,serif" fontSize="28" fontStyle="italic" fill={c.text}>s</text>
-                <text x="22" y="31" fontFamily="Georgia,serif" fontSize="28" fontStyle="italic" fill={c.text}>u</text>
-                <path d="M24 12 Q30 6 36 12" stroke={c.gold} strokeWidth="1.8" fill="none" strokeLinecap="round"/>
-                <circle cx="30" cy="8" r="1.6" fill={c.gold}/>
-                <text x="40" y="31" fontFamily="Georgia,serif" fontSize="28" fontStyle="italic" fill={c.text}>na</text>
-              </svg>
+              <img
+                src={SUNA_LOGO_B64}
+                alt="Suna"
+                style={{
+                  height: '28px',
+                  width: 'auto',
+                  display: 'block',
+                  filter: isDark ? 'invert(1) brightness(0.85)' : 'invert(1)',
+                }}
+              />
             )}
           </div>
           <div style={{ width:'1px', height:'20px', background:c.border2 }}></div>
@@ -615,9 +639,33 @@ export default function App() {
 
       <nav style={s.sidebar}>
         <div style={s.navLabel}>Views</div>
-        {[['dashboard','Dashboard'],['accounts','Accounts'],['activity','Activity'],['analytics','Analytics']].map(([id,label])=>(<div key={id} style={s.navItem(view===id)} onClick={()=>setView(id)}>{label}</div>))}
+        {[['dashboard','Dashboard'],['accounts','Accounts'],['activity','Activity'],['analytics','Analytics']].map(([id,label])=>(<div key={id} style={s.navItem(view===id)} onClick={()=>setView(id)}><span>{label}</span></div>))}
         <div style={s.navLabel}>By Rep</div>
-        {[['','All reps'],...reps.map(r=>[r,r.length>14?r.slice(0,14)+'…':r])].map(([val,label])=>(<div key={val} style={{ ...s.navItem(spocFilter===val), fontSize:'13px' }} onClick={()=>{setSpocFilter(val);setPage(1)}}>{label}</div>))}
+        {/* FIX 3: Show account count badge next to each rep name */}
+        <div style={s.navItem(spocFilter==='')} onClick={()=>{setSpocFilter('');setPage(1)}}>
+          <span>All reps</span>
+          <span style={{
+            fontSize:'10px', fontWeight:'600', minWidth:'18px', height:'18px',
+            borderRadius:'9px', background: spocFilter==='' ? 'rgba(255,255,255,0.25)' : c.surface2,
+            color: spocFilter==='' ? '#fff' : c.muted,
+            display:'inline-flex', alignItems:'center', justifyContent:'center',
+            padding:'0 5px', lineHeight:1,
+          }}>{accounts.length}</span>
+        </div>
+        {reps.map(rep => (
+          <div key={rep} style={s.navItem(spocFilter===rep)} onClick={()=>{setSpocFilter(rep);setPage(1)}}>
+            <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              {rep.length > 13 ? rep.slice(0,13)+'…' : rep}
+            </span>
+            <span style={{
+              fontSize:'10px', fontWeight:'600', minWidth:'18px', height:'18px',
+              borderRadius:'9px', background: spocFilter===rep ? 'rgba(255,255,255,0.25)' : c.surface2,
+              color: spocFilter===rep ? '#fff' : c.muted,
+              display:'inline-flex', alignItems:'center', justifyContent:'center',
+              padding:'0 5px', lineHeight:1, flexShrink:0,
+            }}>{repCounts[rep] || 0}</span>
+          </div>
+        ))}
       </nav>
 
       <main style={s.main}>
@@ -693,7 +741,9 @@ export default function App() {
           <div>
             <div style={{ marginBottom:'24px' }}><div style={{ fontSize:'17px', fontWeight:'600' }}>Analytics</div><div style={{ fontSize:'12px', color:c.muted, marginTop:'3px' }}>Revenue breakdown across the portfolio</div></div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'18px' }}>
-              {[['Revenue by rep',reps.map(sp=>({label:sp,val:accounts.filter(a=>a.spoc===sp).reduce((s,a)=>s+getTotal(a.id),0)})).sort((a,b)=>b.val-a.val)],['Revenue by type',[...new Set(accounts.map(a=>a.type).filter(Boolean))].map(t=>({label:t,val:accounts.filter(a=>a.type===t).reduce((s,a)=>s+getTotal(a.id),0)})).sort((a,b)=>b.val-a.val).slice(0,8)],['Top 10 accounts',[...accounts].sort((a,b)=>getTotal(b.id)-getTotal(a.id)).filter(a=>getTotal(a.id)>0).slice(0,10).map(a=>({label:a.company.length>22?a.company.slice(0,22)+'…':a.company,val:getTotal(a.id)}))],['Active by type',[...new Set(accounts.map(a=>a.type).filter(Boolean))].map(t=>({label:t,val:accounts.filter(a=>a.type===t&&isActive(a)).length})).sort((a,b)=>b.val-a.val).slice(0,8)]].map(([title,data],ci)=>{const isCount=ci===3;const max=Math.max(...data.map(d=>d.val),1);const colors=[c.gold,c.blue,c.green,'#a78bfa','#fb923c','#f472b6','#34d399','#fbbf24'];return(<div key={title} style={s.card}><div style={{ fontSize:'12px', fontWeight:'600', letterSpacing:'0.04em', color:c.muted, textTransform:'uppercase', marginBottom:'18px' }}>{title}</div><div style={{ display:'flex', flexDirection:'column', gap:'9px' }}>{data.filter(d=>d.val>0).map((d,i)=>(<div key={d.label} style={{ display:'flex', alignItems:'center', gap:'10px' }}><div style={{ width:'100px', fontSize:'12px', color:c.muted, textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flexShrink:0 }}>{d.label}</div><div style={{ flex:1, height:'22px', background:c.surface2, borderRadius:'4px', overflow:'hidden', position:'relative' }}><div style={{ height:'100%', width:d.val/max*100+'%', background:colors[i%colors.length], borderRadius:'4px' }}></div><div style={{ position:'absolute', right:'8px', top:'50%', transform:'translateY(-50%)', fontSize:'11px', fontFamily:'monospace', fontWeight:'500' }}>{isCount?d.val:fmtS(d.val)}</div></div></div>))}</div></div>)})}
+              {/* FIX 2: Use CHART_COLORS array (index 0 = '#c9943a', a visible amber)
+                  instead of the old hardcoded color array that started with #413124 (same as font). */}
+              {[['Revenue by rep',reps.map(sp=>({label:sp,val:accounts.filter(a=>a.spoc===sp).reduce((s,a)=>s+getTotal(a.id),0)})).sort((a,b)=>b.val-a.val)],['Revenue by type',[...new Set(accounts.map(a=>a.type).filter(Boolean))].map(t=>({label:t,val:accounts.filter(a=>a.type===t).reduce((s,a)=>s+getTotal(a.id),0)})).sort((a,b)=>b.val-a.val).slice(0,8)],['Top 10 accounts',[...accounts].sort((a,b)=>getTotal(b.id)-getTotal(a.id)).filter(a=>getTotal(a.id)>0).slice(0,10).map(a=>({label:a.company.length>22?a.company.slice(0,22)+'…':a.company,val:getTotal(a.id)}))],['Active by type',[...new Set(accounts.map(a=>a.type).filter(Boolean))].map(t=>({label:t,val:accounts.filter(a=>a.type===t&&isActive(a)).length})).sort((a,b)=>b.val-a.val).slice(0,8)]].map(([title,data],ci)=>{const isCount=ci===3;const max=Math.max(...data.map(d=>d.val),1);return(<div key={title} style={s.card}><div style={{ fontSize:'12px', fontWeight:'600', letterSpacing:'0.04em', color:c.muted, textTransform:'uppercase', marginBottom:'18px' }}>{title}</div><div style={{ display:'flex', flexDirection:'column', gap:'9px' }}>{data.filter(d=>d.val>0).map((d,i)=>(<div key={d.label} style={{ display:'flex', alignItems:'center', gap:'10px' }}><div style={{ width:'100px', fontSize:'12px', color:c.muted, textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flexShrink:0 }}>{d.label}</div><div style={{ flex:1, height:'22px', background:c.surface2, borderRadius:'4px', overflow:'hidden', position:'relative' }}><div style={{ height:'100%', width:d.val/max*100+'%', background:CHART_COLORS[i%CHART_COLORS.length], borderRadius:'4px' }}></div><div style={{ position:'absolute', right:'8px', top:'50%', transform:'translateY(-50%)', fontSize:'11px', fontFamily:'monospace', fontWeight:'600', color:c.text, mixBlendMode: isDark ? 'screen' : 'multiply' }}>{isCount?d.val:fmtS(d.val)}</div></div></div>))}</div></div>)})}
             </div>
           </div>
         )}
